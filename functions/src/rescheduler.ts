@@ -1,5 +1,4 @@
-import { Request } from "firebase-functions";
-import { Response } from "express";
+import { Request, Response } from "express";
 import { currentMoment, getLowerLabelNamesToSkip, todoistApi } from "./utils";
 import moment = require("moment-timezone");
 import { Task, UpdateTaskArgs } from "@doist/todoist-api-typescript";
@@ -19,7 +18,7 @@ export abstract class BaseRescheduler {
       return;
     }
 
-    const allTasks = await todoistApi.getTasks();
+    const allTasks = (await todoistApi.getTasks()).results;
     const lowerLabelsToSkip = await getLowerLabelNamesToSkip();
     const now = currentMoment();
 

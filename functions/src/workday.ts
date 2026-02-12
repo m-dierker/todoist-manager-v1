@@ -2,7 +2,7 @@ import { Moment } from "moment-timezone";
 import moment = require("moment-timezone");
 import { currentMoment, todoistApi } from "./utils";
 import { BaseRescheduler } from "./rescheduler";
-import { Project, Task } from "@doist/todoist-api-typescript";
+import { PersonalProject, WorkspaceProject, Task } from "@doist/todoist-api-typescript";
 
 export class WorkdayTaskRescheduler extends BaseRescheduler {
   /** Cached work project IDs for the life of the rescheduler. */
@@ -52,7 +52,7 @@ async function getWorkProjectIds(): Promise<Set<string>> {
       project.trim().toLowerCase()
     )
   );
-  const projects: Project[] = await todoistApi.getProjects();
+  const projects: (PersonalProject | WorkspaceProject)[] = (await todoistApi.getProjects()).results;
   return new Set(
     projects
       .filter((project) =>

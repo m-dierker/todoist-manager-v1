@@ -1,5 +1,5 @@
 // @ts-ignore
-require("dotenv").config();
+// require("dotenv").config();
 import * as functions from "firebase-functions";
 import { OverdueTaskRescheduler } from "./overdue";
 import { WorkdayTaskRescheduler } from "./workday";
