@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { currentMoment, getLowerLabelNamesToSkip, todoistApi } from "./utils";
+import { currentMoment, getLowerLabelNamesToSkip, taskHasDueTime, todoistApi } from "./utils";
 import moment = require("moment-timezone");
 import { Task, UpdateTaskArgs } from "@doist/todoist-api-typescript";
 
@@ -18,24 +18,35 @@ export abstract class BaseRescheduler {
       return;
     }
 
+    const isDryRun =
+      request.query["dry_run"] === "true" ||
+      request.query["dryRun"] === "true" ||
+      process.env.DRY_RUN === "true";
+
     const allTasks = (await todoistApi.getTasks()).results;
     const lowerLabelsToSkip = await getLowerLabelNamesToSkip();
     const now = currentMoment();
 
     const rescheduledTasks = await Promise.all(
-      allTasks.map((task) => this.rescheduleTask(task, lowerLabelsToSkip, now))
+      allTasks.map((task) =>
+        this.rescheduleTask(task, lowerLabelsToSkip, now, isDryRun)
+      )
     );
 
     const numComplete = rescheduledTasks.filter((success) => success).length;
 
-    console.log(`Updated ${numComplete} tasks`);
-    response.send(`Updated ${numComplete} tasks`);
+    const message = isDryRun
+      ? `[DRY RUN] Would update ${numComplete} tasks`
+      : `Updated ${numComplete} tasks`;
+    console.log(message);
+    response.send(message);
   }
 
   private async rescheduleTask(
     task: Task,
     lowerLabelsToSkip: Set<string>,
-    now: moment.Moment
+    now: moment.Moment,
+    isDryRun: boolean = false
   ): Promise<boolean> {
     // If the task doesn't have a date, it can't be rescheduled.
     if (!task.due || !task.due.date) {
@@ -57,9 +68,9 @@ export abstract class BaseRescheduler {
       return false;
     }
 
-    // If this is a datetime (i.e. not midnight), update the datetime instead.
+    // If the original task had a time, update the datetime; otherwise update the date.
     let updateArg: UpdateTaskArgs;
-    if (rescheduleTime.hour() !== 0 || rescheduleTime.minute() !== 0) {
+    if (taskHasDueTime(task)) {
       updateArg = {
         dueDatetime: rescheduleTime.toISOString(),
       };
@@ -69,8 +80,12 @@ export abstract class BaseRescheduler {
     }
 
     console.log(
-      `Rescheduling ${task.content} for ${JSON.stringify(updateArg)}`
+      `${isDryRun ? "[DRY RUN] Would reschedule" : "Rescheduling"} ${task.content} for ${JSON.stringify(updateArg)}`
     );
+
+    if (isDryRun) {
+      return true;
+    }
 
     try {
       // @ts-ignore

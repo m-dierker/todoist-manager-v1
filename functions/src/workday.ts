@@ -1,6 +1,5 @@
 import { Moment } from "moment-timezone";
-import moment = require("moment-timezone");
-import { currentMoment, todoistApi } from "./utils";
+import { getTaskDueMoment, taskHasDueTime, todoistApi } from "./utils";
 import { BaseRescheduler } from "./rescheduler";
 import { PersonalProject, WorkspaceProject, Task } from "@doist/todoist-api-typescript";
 
@@ -8,12 +7,9 @@ export class WorkdayTaskRescheduler extends BaseRescheduler {
   /** Cached work project IDs for the life of the rescheduler. */
   private projectIdsToReschedule: Promise<Set<string>>;
 
-  private nextWorkday: Moment;
-
   constructor() {
     super();
     this.projectIdsToReschedule = getWorkProjectIds();
-    this.nextWorkday = getNextWorkday();
   }
 
   async getRescheduleTime({
@@ -23,9 +19,10 @@ export class WorkdayTaskRescheduler extends BaseRescheduler {
     task: Task;
     now: Moment;
   }): Promise<Moment | undefined> {
-    const taskDueDate = moment
-      .tz(task.due!.date, process.env.TIMEZONE!)
-      .startOf("day");
+    const taskDueDate = getTaskDueMoment(task);
+    if (!taskDueDate) {
+      return;
+    }
 
     // Tasks already scheduled in the future should not be rescheduled.
     if (taskDueDate.isAfter(now)) {
@@ -38,7 +35,16 @@ export class WorkdayTaskRescheduler extends BaseRescheduler {
       return;
     }
 
-    return this.nextWorkday.startOf("day");
+    const nextWorkday = getNextWorkday(now);
+    if (taskHasDueTime(task)) {
+      return nextWorkday
+        .clone()
+        .hour(taskDueDate.hour())
+        .minute(taskDueDate.minute())
+        .second(taskDueDate.second());
+    }
+
+    return nextWorkday.clone().startOf("day");
   }
 }
 
@@ -65,13 +71,13 @@ async function getWorkProjectIds(): Promise<Set<string>> {
 const ISO_WEEKDAY_MONDAY = 1;
 const ISO_WEEKDAY_FRIDAY = 5;
 
-function getNextWorkday(): Moment {
-  const now = currentMoment();
-  const nextIsoWeekday = now.isoWeekday() + 1;
+function getNextWorkday(now: Moment): Moment {
+  const next = now.clone();
+  const nextIsoWeekday = next.isoWeekday() + 1;
   if (nextIsoWeekday <= ISO_WEEKDAY_FRIDAY) {
-    return now.isoWeekday(nextIsoWeekday);
+    return next.isoWeekday(nextIsoWeekday).startOf("day");
   } else {
     // On weekends, defer to next Monday.
-    return now.add(1, "weeks").isoWeekday(ISO_WEEKDAY_MONDAY);
+    return next.add(1, "weeks").isoWeekday(ISO_WEEKDAY_MONDAY).startOf("day");
   }
 }
